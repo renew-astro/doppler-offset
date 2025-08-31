@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Doppler Effect Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        .label-text {
+            @apply text-sm font-medium text-gray-300;
+        }
+        .value-text {
+            @apply text-lg font-semibold text-white;
+        }
+        .control-panel-bg {
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4b5563; /* bg-gray-600 */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* bg-blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6; /* bg-blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white overflow-hidden h-screen flex flex-col">
+
+    <!-- Main container -->
+    <div class="flex flex-col lg:flex-row flex-grow h-full">
+
+        <!-- Simulation and Graph Area -->
+        <div class="flex-grow flex flex-col p-4 space-y-4 w-full lg:w-2/3">
+            <!-- Simulation Canvas -->
+            <div class="bg-gray-800 rounded-xl shadow-lg flex-grow relative">
+                <canvas id="dopplerCanvas" class="absolute top-0 left-0 w-full h-full cursor-pointer"></canvas>
+            </div>
+            <!-- Graph Area -->
+            <div class="bg-gray-800 rounded-xl shadow-lg h-1/3 p-4">
+                 <canvas id="frequencyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="w-full lg:w-1/3 p-4">
+            <div class="control-panel-bg rounded-xl shadow-lg h-full flex flex-col p-6 space-y-6">
+                <h1 class="text-2xl font-bold text-center text-blue-400">Doppler Effect Controls</h1>
+
+                <!-- Data Display -->
+                <div class="grid grid-cols-2 gap-4 text-center bg-gray-700/50 p-4 rounded-lg">
+                    <div>
+                        <p class="label-text">Apparent Frequency</p>
+                        <p id="apparentFrequencyDisplay" class="value-text">0 Hz</p>
+                    </div>
+                    <div>
+                        <p class="label-text">Apparent Wavelength</p>
+                        <p id="apparentWavelengthDisplay" class="value-text">0 m</p>
+                    </div>
+                </div>
+
+                <!-- Source Velocity Control -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <label for="sourceVelocity" class="label-text">Source Velocity (v_s)</label>
+                        <span id="sourceVelocityValue" class="value-text">15 m/s</span>
+                    </div>
+                    <input type="range" id="sourceVelocity" min="0" max="30" value="15" step="1" class="w-full">
+                </div>
+
+                <!-- Source Frequency Control -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <label for="sourceFrequency" class="label-text">Source Frequency (f_s)</label>
+                        <span id="sourceFrequencyValue" class="value-text">150 Hz</span>
+                    </div>
+                    <input type="range" id="sourceFrequency" min="100" max="200" value="150" step="1" class="w-full">
+                </div>
+
+                <!-- Observer Offset Control -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <label for="observerOffset" class="label-text">Observer Y-Offset</label>
+                        <span id="observerOffsetValue" class="value-text">0 m</span>
+                    </div>
+                    <input type="range" id="observerOffset" min="-100" max="100" value="0" step="5" class="w-full">
+                </div>
+
+                <!-- Animation Speed Control -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <label for="animationSpeed" class="label-text">Animation Speed</label>
+                        <span id="animationSpeedValue" class="value-text">1.0x</span>
+                    </div>
+                    <input type="range" id="animationSpeed" min="0.1" max="2" value="1" step="0.1" class="w-full">
+                </div>
+                
+                <!-- Constants Display -->
+                <div class="border-t border-gray-600 pt-4 mt-auto">
+                     <p class="text-center label-text">Wave Speed in Air (v): <span class="font-semibold text-gray-200">343 m/s</span></p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex space-x-4">
+                    <button id="wavefrontToggle" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                        Waves: Normal
+                    </button>
+                    <button id="resetButton" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Canvas and Context Setup ---
+        const canvas = document.getElementById('dopplerCanvas');
+        const ctx = canvas.getContext('2d');
+        const chartCanvas = document.getElementById('frequencyChart');
+        const chartCtx = chartCanvas.getContext('2d');
+
+        // --- DOM Element References ---
+        const velocitySlider = document.getElementById('sourceVelocity');
+        const frequencySlider = document.getElementById('sourceFrequency');
+        const offsetSlider = document.getElementById('observerOffset');
+        const speedSlider = document.getElementById('animationSpeed');
+        const wavefrontToggleButton = document.getElementById('wavefrontToggle');
+        const resetButton = document.getElementById('resetButton');
+
+        const velocityValue = document.getElementById('sourceVelocityValue');
+        const frequencyValue = document.getElementById('sourceFrequencyValue');
+        const offsetValue = document.getElementById('observerOffsetValue');
+        const speedValue = document.getElementById('animationSpeedValue');
+        const freqDisplay = document.getElementById('apparentFrequencyDisplay');
+        const wavelengthDisplay = document.getElementById('apparentWavelengthDisplay');
+
+        // --- Simulation Constants and State ---
+        const WAVE_SPEED = 343; // m/s
+        let source = { x: 0, y: 0, vx: 15, frequency: 150 };
+        let observer = { x: 0, y: 0, offset: 0 };
+        let wavefronts = [];
+        let time = 0;
+        let lastWaveEmitTime = 0;
+        let animationFrameId;
+        let animationSpeed = 1.0;
+        let waveEmitFactor = 1; // 1 for normal, 4 for reduced
+        let isPaused = false;
+        let visualWidth, visualHeight; // Store visual dimensions of the canvas
+        
+        // --- Audio Setup ---
+        let oscillator;
+        let isAudioReady = false;
+
+        function setupAudio() {
+            if (isAudioReady) return;
+            Tone.start();
+            oscillator = new Tone.Oscillator({
+                type: 'sine',
+                frequency: 440,
+                volume: -10
+            }).toDestination();
+            oscillator.start(); // Start the oscillator immediately after creation
+            isAudioReady = true;
+        }
+
+
+        // --- Chart.js Setup ---
+        let chart;
+        let timeData = [];
+        let frequencyData = [];
+        let sourceFrequencyData = [];
+        let minObservedFreq = 150;
+        let maxObservedFreq = 150;
+
+        function initializeChart() {
+            if (chart) chart.destroy();
+            chart = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Apparent Frequency (Hz)',
+                            data: [],
+                            borderColor: '#3b82f6', // bg-blue-500
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Source Frequency (Hz)',
+                            data: [],
+                            borderColor: '#ef4444', // red-500
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            borderDash: [5, 5],
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            min: 0, // Keep the x-axis start at 0
+                            title: { display: true, text: 'Time (s)', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Frequency (Hz)', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#d1d5db' } }
+                    },
+                    animation: {
+                        duration: 0 // Disable animation for real-time updates
+                    }
+                }
+            });
+        }
+        
+        // --- Core Simulation Logic ---
+
+        function resetSimulation() {
+            // Stop any existing animation loop
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            isPaused = false; // Ensure simulation is not paused on reset
+            
+            // Reset simulation state
+            time = 0;
+            lastWaveEmitTime = 0;
+            wavefronts = [];
+            
+            // Set source initial position using visual dimensions
+            source.x = -visualWidth * 0.1;
+            source.y = visualHeight / 2;
+
+            // Set observer position using visual dimensions
+            observer.x = visualWidth / 2;
+            observer.y = visualHeight / 2 - observer.offset;
+            
+            // Reset chart data and frequency tracking
+            timeData = [];
+            frequencyData = [];
+            sourceFrequencyData = [];
+            minObservedFreq = source.frequency;
+            maxObservedFreq = source.frequency;
+            chart.data.labels = timeData;
+            chart.data.datasets[0].data = frequencyData;
+            chart.data.datasets[1].data = sourceFrequencyData;
+            chart.update();
+
+            // Start the new animation loop
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function animate(timestamp) {
+            // If paused, simply stop the animation loop. The last frame will remain on screen.
+            if (isPaused) {
+                if (oscillator) oscillator.volume.value = -Infinity; // Mute sound when paused
+                cancelAnimationFrame(animationFrameId);
+                return;
+            }
+            if (oscillator) oscillator.volume.value = -10; // Unmute sound when playing
+
+            // The simulation time step is constant for stability, modified by animation speed
+            const deltaTime = (1 / 60) * animationSpeed; 
+            time += deltaTime;
+
+            // --- Update Logic ---
+            // Move the sound source
+            source.x += source.vx * deltaTime * 10; // Multiplier for visual speed
+
+            // Emit new wavefronts based on source frequency and density setting
+            const period = 1 / source.frequency;
+            if (time - lastWaveEmitTime >= period * waveEmitFactor) {
+                wavefronts.push({
+                    originX: source.x,
+                    originY: source.y,
+                    radius: 0,
+                    creationTime: time
+                });
+                lastWaveEmitTime = time;
+            }
+
+            // Expand existing wavefronts and filter old ones
+            wavefronts.forEach(wave => {
+                wave.radius += WAVE_SPEED * deltaTime * 2; // Multiplier for visual speed
+            });
+            wavefronts = wavefronts.filter(wave => wave.radius < visualWidth * 1.5);
+
+            // --- Doppler Calculation ---
+            const dx = observer.x - source.x;
+            const dy = observer.y - source.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            let apparentFrequency = source.frequency;
+            let apparentWavelength = WAVE_SPEED / source.frequency;
+            
+            if (distance > 0) {
+                // v_s_rel is the component of the source's velocity along the line to the observer
+                const v_s_rel = source.vx * (dx / distance);
+                
+                // Doppler effect formula for a moving source and stationary observer
+                apparentFrequency = source.frequency * (WAVE_SPEED / (WAVE_SPEED - v_s_rel));
+                apparentWavelength = WAVE_SPEED / apparentFrequency;
+            }
+
+            // Update audio frequency
+            if (oscillator) {
+                oscillator.frequency.rampTo(apparentFrequency, 0.1);
+            }
+
+            // Update observed frequency range for the entire run
+            minObservedFreq = Math.min(minObservedFreq, apparentFrequency);
+            maxObservedFreq = Math.max(maxObservedFreq, apparentFrequency);
+
+            // Update UI displays
+            freqDisplay.textContent = `${apparentFrequency.toFixed(2)} Hz`;
+            wavelengthDisplay.textContent = `${apparentWavelength.toFixed(2)} m`;
+
+            // Update chart data
+            timeData.push(time);
+            frequencyData.push(apparentFrequency);
+            sourceFrequencyData.push(source.frequency);
+            
+            chart.data.labels = timeData;
+            chart.data.datasets[0].data = frequencyData;
+            chart.data.datasets[1].data = sourceFrequencyData;
+            
+            // Dynamically set the axes scales
+            chart.options.scales.x.max = time;
+            chart.options.scales.y.min = Math.min(minObservedFreq, source.frequency) * 0.95;
+            chart.options.scales.y.max = Math.max(maxObservedFreq, source.frequency) * 1.05;
+
+            
+            chart.update('none'); // Use 'none' to avoid re-animation
+
+            // --- Drawing Logic ---
+            ctx.clearRect(0, 0, visualWidth, visualHeight);
+
+            // Draw guide lines
+            ctx.save();
+            ctx.setLineDash([5, 10]);
+            ctx.lineWidth = 2; // Increased line weight
+
+            // Red dotted line for source path
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(0, source.y);
+            ctx.lineTo(visualWidth, source.y);
+            ctx.stroke();
+
+            // Green dotted line for observer position
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(observer.x, 0);
+            ctx.lineTo(observer.x, visualHeight);
+            ctx.stroke();
+            
+            ctx.restore();
+
+            // Draw line connecting source and observer
+            ctx.save();
+            ctx.setLineDash([2, 4]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2; // Increased line weight
+            ctx.beginPath();
+            ctx.moveTo(source.x, source.y);
+            ctx.lineTo(observer.x, observer.y);
+            ctx.stroke();
+            ctx.restore();
+            
+            // Draw wavefronts
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.lineWidth = 2;
+            wavefronts.forEach(wave => {
+                ctx.beginPath();
+                ctx.arc(wave.originX, wave.originY, wave.radius, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            // Draw source
+            ctx.fillStyle = '#ef4444'; // red-500
+            ctx.beginPath();
+            ctx.arc(source.x, source.y, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw observer
+            ctx.fillStyle = '#10b981'; // emerald-500
+            ctx.beginPath();
+            ctx.arc(observer.x, observer.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Reset simulation if source goes off-screen
+            if (source.x > visualWidth * 1.1) {
+                resetSimulation();
+            }
+
+            // Request next frame
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // --- Event Handlers ---
+        function handleResize() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+
+            // Store visual dimensions
+            visualWidth = rect.width;
+            visualHeight = rect.height;
+
+            // Set canvas internal resolution
+            canvas.width = visualWidth * dpr;
+            canvas.height = visualHeight * dpr;
+
+            // Scale the context to handle high-DPR screens
+            ctx.scale(dpr, dpr);
+            
+            resetSimulation();
+        }
+
+        function setupEventListeners() {
+            velocitySlider.addEventListener('input', (e) => {
+                source.vx = parseFloat(e.target.value);
+                velocityValue.textContent = `${source.vx} m/s`;
+            });
+            velocitySlider.addEventListener('change', resetSimulation);
+
+            frequencySlider.addEventListener('input', (e) => {
+                source.frequency = parseFloat(e.target.value);
+                frequencyValue.textContent = `${source.frequency} Hz`;
+            });
+            frequencySlider.addEventListener('change', resetSimulation);
+
+            offsetSlider.addEventListener('input', (e) => {
+                observer.offset = parseFloat(e.target.value);
+                offsetValue.textContent = `${observer.offset} m`;
+                // Update observer's y position based on visual height
+                observer.y = visualHeight / 2 - observer.offset;
+            });
+            offsetSlider.addEventListener('change', resetSimulation);
+            
+            speedSlider.addEventListener('input', (e) => {
+                animationSpeed = parseFloat(e.target.value);
+                speedValue.textContent = `${animationSpeed.toFixed(1)}x`;
+            });
+
+            wavefrontToggleButton.addEventListener('click', () => {
+                if (!isAudioReady) setupAudio();
+                if (waveEmitFactor === 1) {
+                    waveEmitFactor = 4;
+                    wavefrontToggleButton.textContent = 'Waves: Reduced';
+                } else {
+                    waveEmitFactor = 1;
+                    wavefrontToggleButton.textContent = 'Waves: Normal';
+                }
+                resetSimulation();
+            });
+
+            resetButton.addEventListener('click', () => {
+                if (!isAudioReady) setupAudio();
+                resetSimulation();
+            });
+            window.addEventListener('resize', handleResize);
+
+            // Pause/Resume on canvas click
+            canvas.addEventListener('click', () => {
+                if (!isAudioReady) setupAudio();
+                isPaused = !isPaused;
+                if (!isPaused) {
+                    // If unpausing, restart the animation loop
+                    animationFrameId = requestAnimationFrame(animate);
+                }
+            });
+        }
+
+        // --- Initialization ---
+        window.onload = () => {
+            // Set initial values from sliders
+            source.vx = parseFloat(velocitySlider.value);
+            source.frequency = parseFloat(frequencySlider.value);
+            observer.offset = parseFloat(offsetSlider.value);
+            animationSpeed = parseFloat(speedSlider.value);
+            
+            velocityValue.textContent = `${source.vx} m/s`;
+            frequencyValue.textContent = `${source.frequency} Hz`;
+            offsetValue.textContent = `${observer.offset} m`;
+            speedValue.textContent = `${animationSpeed.toFixed(1)}x`;
+
+            initializeChart();
+            setupEventListeners();
+            handleResize(); // This also calls resetSimulation to start everything
+        };
+    </script>
+</body>
+</html>
