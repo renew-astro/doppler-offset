@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binding Energy per Nucleon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+    <style>
+        /* Ensure the plot container takes up space */
+        #bindingEnergyPlot {
+            width: 100%;
+            height: 600px; /* Adjust height as needed */
+        }
+        body {
+            font-family: 'Inter', sans-serif; /* Use Inter font */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-2xl font-semibold text-center text-gray-800 mb-4">
+            Binding Energy per Nucleon vs. Mass Number (Approximate)
+        </h1>
+
+        <div class="text-center mb-4">
+            <button id="flipAxisButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow transition duration-150 ease-in-out">
+                Invert Y-Axis (Show Potential Well)
+            </button>
+        </div>
+
+        <div id="bindingEnergyPlot" class="rounded-lg overflow-hidden border border-gray-200"></div>
+        <p class="text-xs text-gray-500 mt-4 text-center">
+            Data points represent common/stable isotopes for elements Z=1 to Z=92. Hover over points for details. Data is approximate. Click the button to invert the vertical axis.
+        </p>
+    </div>
+
+    <script>
+        // Approximate Binding Energy per Nucleon (BE/A) data for common/stable isotopes
+        // Format: [Mass Number (A), BE/A (MeV), Element Symbol]
+        // Data is approximate and gathered from various physics resources for illustrative purposes.
+        const bindingEnergyData = [
+            [1, 0, 'H'], [2, 1.11, 'H'], [3, 2.83, 'H'], [4, 7.07, 'He'], [6, 5.33, 'Li'],
+            [7, 5.60, 'Li'], [9, 6.46, 'Be'], [10, 6.48, 'B'], [11, 6.93, 'B'], [12, 7.68, 'C'],
+            [13, 7.47, 'C'], [14, 7.48, 'N'], [15, 7.70, 'N'], [16, 7.98, 'O'], [17, 7.75, 'O'],
+            [18, 7.77, 'O'], [19, 7.78, 'F'], [20, 8.03, 'Ne'], [22, 8.08, 'Ne'], [23, 8.11, 'Na'],
+            [24, 8.26, 'Mg'], [25, 8.22, 'Mg'], [26, 8.33, 'Mg'], [27, 8.33, 'Al'], [28, 8.45, 'Si'],
+            [29, 8.48, 'Si'], [30, 8.52, 'Si'], [31, 8.48, 'P'], [32, 8.55, 'S'], [34, 8.62, 'S'],
+            [35, 8.52, 'Cl'], [37, 8.57, 'Cl'], [36, 8.59, 'Ar'], [38, 8.61, 'Ar'], [40, 8.55, 'Ar'],
+            [39, 8.54, 'K'], [41, 8.58, 'K'], [40, 8.55, 'Ca'], [42, 8.55, 'Ca'], [44, 8.62, 'Ca'],
+            [48, 8.67, 'Ca'], [45, 8.62, 'Sc'], [46, 8.64, 'Ti'], [48, 8.72, 'Ti'], [50, 8.73, 'Ti'],
+            [51, 8.74, 'V'], [50, 8.73, 'Cr'], [52, 8.78, 'Cr'], [54, 8.74, 'Cr'], [55, 8.77, 'Mn'],
+            [54, 8.74, 'Fe'], [56, 8.79, 'Fe'], [57, 8.77, 'Fe'], [58, 8.79, 'Fe'], [59, 8.77, 'Co'],
+            [58, 8.79, 'Ni'], [60, 8.78, 'Ni'], [62, 8.795, 'Ni'], [64, 8.78, 'Ni'], [63, 8.75, 'Cu'],
+            [65, 8.76, 'Cu'], [64, 8.78, 'Zn'], [66, 8.76, 'Zn'], [68, 8.74, 'Zn'], [70, 8.72, 'Zn'],
+            [69, 8.72, 'Ga'], [71, 8.73, 'Ga'], [70, 8.72, 'Ge'], [72, 8.71, 'Ge'], [74, 8.69, 'Ge'],
+            [76, 8.65, 'Ge'], [75, 8.70, 'As'], [76, 8.71, 'Se'], [78, 8.70, 'Se'], [80, 8.69, 'Se'],
+            [79, 8.69, 'Br'], [81, 8.69, 'Br'], [84, 8.70, 'Kr'], [86, 8.68, 'Kr'], [85, 8.68, 'Rb'],
+            [87, 8.69, 'Rb'], [88, 8.69, 'Sr'], [89, 8.67, 'Y'], [90, 8.69, 'Zr'], [92, 8.66, 'Zr'],
+            [94, 8.63, 'Zr'], [93, 8.66, 'Nb'], [92, 8.66, 'Mo'], [94, 8.63, 'Mo'], [96, 8.60, 'Mo'],
+            [98, 8.56, 'Mo'], [100, 8.52, 'Mo'], [99, 8.55, 'Tc'], [100, 8.59, 'Ru'], [102, 8.56, 'Ru'],
+            [104, 8.52, 'Ru'], [103, 8.56, 'Rh'], [106, 8.54, 'Pd'], [108, 8.51, 'Pd'], [110, 8.48, 'Pd'],
+            [107, 8.55, 'Ag'], [109, 8.53, 'Ag'], [112, 8.51, 'Cd'], [114, 8.48, 'Cd'], [113, 8.49, 'In'],
+            [115, 8.47, 'In'], [116, 8.48, 'Sn'], [118, 8.49, 'Sn'], [120, 8.49, 'Sn'], [121, 8.46, 'Sb'],
+            [123, 8.45, 'Sb'], [128, 8.43, 'Te'], [130, 8.41, 'Te'], [127, 8.45, 'I'], [132, 8.39, 'Xe'],
+            [134, 8.37, 'Xe'], [133, 8.40, 'Cs'], [138, 8.36, 'Ba'], [139, 8.35, 'La'], [140, 8.35, 'Ce'],
+            [141, 8.34, 'Pr'], [142, 8.34, 'Nd'], [144, 8.31, 'Nd'], [147, 8.27, 'Pm'], [150, 8.26, 'Sm'],
+            [152, 8.25, 'Sm'], [153, 8.24, 'Eu'], [158, 8.20, 'Gd'], [159, 8.20, 'Tb'], [162, 8.17, 'Dy'],
+            [164, 8.16, 'Dy'], [165, 8.15, 'Ho'], [166, 8.14, 'Er'], [168, 8.12, 'Er'], [169, 8.11, 'Tm'],
+            [174, 8.07, 'Yb'], [175, 8.06, 'Lu'], [178, 8.03, 'Hf'], [180, 8.01, 'Hf'], [181, 8.00, 'Ta'],
+            [184, 7.97, 'W'], [186, 7.95, 'W'], [187, 7.94, 'Re'], [190, 7.91, 'Os'], [192, 7.90, 'Os'],
+            [193, 7.89, 'Ir'], [195, 7.88, 'Pt'], [197, 7.87, 'Au'], [198, 7.88, 'Hg'], [200, 7.89, 'Hg'],
+            [202, 7.88, 'Hg'], [204, 7.87, 'Hg'], [205, 7.86, 'Tl'], [206, 7.88, 'Pb'], [207, 7.87, 'Pb'],
+            [208, 7.87, 'Pb'], [209, 7.85, 'Bi'], [210, 7.83, 'Po'], [222, 7.74, 'Rn'], [226, 7.69, 'Ra'],
+            [227, 7.68, 'Ac'], [232, 7.61, 'Th'], [231, 7.62, 'Pa'], [234, 7.60, 'U'], [235, 7.59, 'U'],
+            [238, 7.57, 'U']
+        ];
+
+        // Extract data for plotting
+        const massNumbers = bindingEnergyData.map(item => item[0]);
+        const energies = bindingEnergyData.map(item => item[1]);
+        const elementSymbols = bindingEnergyData.map(item => item[2]);
+
+        // Create the trace for Plotly
+        const trace1 = {
+            x: massNumbers,
+            y: energies,
+            mode: 'markers',
+            type: 'scatter',
+            text: elementSymbols,
+            marker: {
+                size: 6,
+                color: energies,
+                colorscale: 'Viridis',
+                colorbar: {
+                    title: 'BE/A (MeV)',
+                    titleside: 'right'
+                },
+                opacity: 0.8
+            },
+            hovertemplate:
+                '<b>Element: %{text}</b><br>' +
+                'Mass Number (A): %{x}<br>' +
+                'BE/A: %{y:.3f} MeV' +
+                '<extra></extra>'
+        };
+
+        // Define the initial layout for the plot
+        const layout = {
+            title: {
+                text: 'Binding Energy per Nucleon vs. Mass Number',
+                font: { size: 18 }
+            },
+            xaxis: {
+                title: 'Mass Number (A)',
+                titlefont: { size: 14 },
+                showgrid: true,
+                zeroline: false
+            },
+            yaxis: {
+                title: 'Binding Energy per Nucleon (BE/A) [MeV]',
+                titlefont: { size: 14 },
+                showgrid: true,
+                zeroline: true, // Keep zeroline visible
+                autorange: true // Start with normal range
+                // range: [0, 9.5] // Optionally set fixed range if needed
+            },
+            hovermode: 'closest',
+            plot_bgcolor: 'rgba(249, 250, 251, 1)',
+            paper_bgcolor: 'rgba(255, 255, 255, 1)',
+            margin: { l: 60, r: 30, b: 50, t: 50 }
+        };
+
+        // Configuration options for the plot
+        const config = {
+            responsive: true,
+            displaylogo: false
+        };
+
+        // Get the container div and button
+        const plotDiv = document.getElementById('bindingEnergyPlot');
+        const flipButton = document.getElementById('flipAxisButton');
+
+        // State variable to track axis direction
+        let isAxisReversed = false;
+
+        // Render the initial plot
+        Plotly.newPlot(plotDiv, [trace1], layout, config);
+
+        // Add event listener to the button
+        flipButton.addEventListener('click', () => {
+            // Toggle the state
+            isAxisReversed = !isAxisReversed;
+
+            // Define the update for the y-axis layout
+            const yAxisUpdate = {};
+
+            if (isAxisReversed) {
+                // Set autorange to reversed
+                yAxisUpdate.autorange = 'reversed';
+                // Update button text
+                flipButton.textContent = 'Reset Y-Axis (Show Standard View)';
+            } else {
+                // Set autorange back to normal
+                yAxisUpdate.autorange = true;
+                 // Update button text
+                flipButton.textContent = 'Invert Y-Axis (Show Potential Well)';
+            }
+
+            // Apply the layout update to the y-axis only
+            Plotly.relayout(plotDiv, { 'yaxis.autorange': yAxisUpdate.autorange });
+        });
+
+    </script>
+
+</body>
+</html>
