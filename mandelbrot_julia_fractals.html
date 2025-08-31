@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot and Julia Set Explorer</title>
+    <style>
+        /* Basic Reset */
+        body, html {
+            margin: 0; padding: 0; height: 100%; font-family: sans-serif;
+            background-color: black; color: white; overflow: hidden;
+        }
+        .container {
+            display: flex; height: 100vh; position: relative; padding: 10px; box-sizing: border-box;
+        }
+
+        /* Mandelbrot Set Styling */
+        #mandelbrot-container {
+            position: absolute; top: 10px; right: 10px; width: 30%; height: auto;
+            aspect-ratio: 4 / 3; max-height: 40%; border: 1px solid #444;
+            background-color: #1a1a1a; box-shadow: 2px 2px 5px rgba(255,255,255,0.1);
+            padding: 5px; box-sizing: border-box; display: flex; flex-direction: column;
+        }
+        #mandelbrot-container h2 {
+            margin: 0 0 5px 0; font-size: 1em; text-align: center; color: white;
+        }
+        #mandelbrotCanvas {
+            display: block; width: 100%; height: auto; cursor: pointer; background-color: #333;
+        }
+
+        /* Julia Set Styling & Controls Area */
+        #julia-container {
+            flex-grow: 1; height: calc(100% - 20px); display: flex; flex-direction: column;
+            align-items: center; margin-right: calc(30% + 20px); padding: 10px;
+            box-sizing: border-box;
+        }
+        #julia-container h2, #julia-container p {
+            color: white; margin: 2px 0; text-align: center;
+        }
+        #julia-container h2 { font-size: 1.2em; }
+        #julia-container p { font-size: 0.9em; }
+        #juliaCanvas {
+            width: 100%; max-width: 800px; aspect-ratio: 800 / 600;
+            border: 1px solid #444; background-color: black; margin-top: 10px;
+        }
+        #c-value { font-weight: bold; font-family: monospace; color: #aaffaa; }
+        #animation-status { font-weight: bold; color: #ffcc66; min-width: 80px; display: inline-block; }
+
+        /* Controls Container Styling (Slider Only) */
+        .controls-container {
+            display: flex;
+            justify-content: center; /* Center the slider control */
+            align-items: center;
+            width: 100%;
+            max-width: 700px;
+            margin-top: 10px;
+            padding: 5px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .slider-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider-control label { font-size: 0.9em; }
+        .slider-control input[type="range"] { cursor: pointer; min-width: 150px; /* Give slider some width */ }
+        .slider-control span { font-family: monospace; min-width: 30px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="julia-container">
+            <h2>Julia Set (J(c))</h2>
+            <p>Click Mandelbrot (top-right) to generate. Scroll wheel or use +/- keys to zoom.</p>
+            <p>Right-click Mandelbrot to animate J(c) from point to origin. Left-click page to stop.</p>
+            <p>Current Constant c = <span id="c-value">None (click Mandelbrot)</span></p>
+            <p>Animation Status: <span id="animation-status">Idle</span></p>
+            <canvas id="juliaCanvas" width="800" height="600"></canvas>
+
+            <div class="controls-container">
+                <div class="slider-control">
+                    <label for="delaySlider">Animation Delay (ms):</label>
+                    <input type="range" id="delaySlider" min="0" max="500" value="0" step="10">
+                    <span id="delayValue">0</span> ms
+                </div>
+            </div>
+        </div>
+
+        <div id="mandelbrot-container">
+            <h2>Mandelbrot Set</h2>
+            <canvas id="mandelbrotCanvas" width="400" height="300"></canvas>
+        </div>
+    </div>
+
+    <script>
+        window.onload = () => {
+            // --- Canvas Setup ---
+            const mandelbrotCanvas = document.getElementById('mandelbrotCanvas');
+            const mandelbrotCtx = mandelbrotCanvas?.getContext('2d', { willReadFrequently: true });
+            const juliaCanvas = document.getElementById('juliaCanvas');
+            const juliaCtx = juliaCanvas?.getContext('2d', { willReadFrequently: true });
+
+            if (!mandelbrotCanvas || !mandelbrotCtx || !juliaCanvas || !juliaCtx) {
+                console.error("Fatal Error: Canvas element or 2D context could not be obtained.");
+                alert("Error: Cannot initialize fractal display. Check console for details.");
+                return;
+            }
+            const M_WIDTH = mandelbrotCanvas.width;
+            const M_HEIGHT = mandelbrotCanvas.height;
+            const J_WIDTH = juliaCanvas.width;
+            const J_HEIGHT = juliaCanvas.height;
+
+            // --- UI Elements ---
+            const cValueSpan = document.getElementById('c-value');
+            const animationStatusSpan = document.getElementById('animation-status');
+            const delaySlider = document.getElementById('delaySlider');
+            const delayValueSpan = document.getElementById('delayValue');
+
+            // Basic check for essential spans
+             if (!cValueSpan || !animationStatusSpan) {
+                 console.warn("Warning: Status display elements not found. Check HTML IDs 'c-value' and 'animation-status'.");
+             }
+             // Check for slider elements separately
+             if (!delaySlider || !delayValueSpan) {
+                 console.warn("Warning: Delay slider elements not found. Check HTML IDs 'delaySlider' and 'delayValue'.");
+             }
+
+            // --- Fractal Parameters ---
+            const MAX_ITER = 100;
+            const ESCAPE_RADIUS_SQ = 4;
+            const ZOOM_FACTOR = 1.15;
+
+            // --- Initial Viewport Definitions ---
+            const INITIAL_M_VIEW = Object.freeze({ xMin: -2.0, xMax: 1.0, yMin: -1.1, yMax: 1.1, width: 3.0, height: 2.2 });
+            const INITIAL_J_VIEW = Object.freeze({ xMin: -1.8, xMax: 1.8, yMin: -1.2, yMax: 1.2, width: 3.6, height: 2.4 });
+
+            // --- State Variables ---
+            let mCurrent = { ...INITIAL_M_VIEW };
+            let jCurrent = { ...INITIAL_J_VIEW };
+            let currentJuliaC = { cx: -0.7, cy: 0.27015 };
+            let hoveredCanvas = null;
+            let lastMousePos = { x: 0, y: 0 };
+
+            // --- Animation State ---
+            let isAnimating = false;
+            let animationFrameID = null;
+            let animationStartTime = null;
+            let animation_c_start = { cx: 0, cy: 0 };
+            const ANIMATION_DURATION = 6000;
+            let animationDelay = 0;
+            let lastFrameTime = 0;
+
+            // --- Helper Functions (map, getColor) ---
+            function map(value, start1, stop1, start2, stop2) { if (start1 === stop1) return start2; return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1)); }
+            function getColor(iter, maxIter) { if (iter === maxIter) return [0, 0, 0]; const hue = (iter * 5) % 360; const saturation = 90; const lightness = Math.min(10 + iter * 1.5, 60); const s = saturation / 100, l = lightness / 100, c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((hue / 60) % 2 - 1)), m = l - c / 2; let r = 0, g = 0, b = 0; if (hue < 60) { r = c; g = x; } else if (hue < 120) { r = x; g = c; } else if (hue < 180) { g = c; b = x; } else if (hue < 240) { g = x; b = c; } else if (hue < 300) { r = x; b = c; } else { r = c; b = x; } r = Math.round((r + m) * 255); g = Math.round((g + m) * 255); b = Math.round((b + m) * 255); return [r, g, b]; }
+
+            // --- Calculation Functions ---
+            function calculateMandelbrot(cx, cy, maxIter) { let zx = 0, zy = 0, iter = 0; while (zx * zx + zy * zy < ESCAPE_RADIUS_SQ && iter < maxIter) { const xtemp = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = xtemp; iter++; } return iter; }
+            function calculateJulia(zx, zy, cx, cy, maxIter) { let iter = 0; while (zx * zx + zy * zy < ESCAPE_RADIUS_SQ && iter < maxIter) { const xtemp = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = xtemp; iter++; } return iter; }
+
+            // --- Drawing Functions ---
+            function drawMandelbrot() {
+                const imageData = mandelbrotCtx.createImageData(M_WIDTH, M_HEIGHT);
+                const data = imageData.data;
+                const { xMin, xMax, yMin, yMax } = mCurrent;
+                for (let py = 0; py < M_HEIGHT; py++) {
+                    const cy = map(py, 0, M_HEIGHT, yMin, yMax);
+                    for (let px = 0; px < M_WIDTH; px++) {
+                        const cx = map(px, 0, M_WIDTH, xMin, xMax);
+                        const iter = calculateMandelbrot(cx, cy, MAX_ITER);
+                        const color = getColor(iter, MAX_ITER);
+                        const index = (py * M_WIDTH + px) * 4;
+                        data[index] = color[0]; data[index + 1] = color[1]; data[index + 2] = color[2]; data[index + 3] = 255;
+                    }
+                }
+                mandelbrotCtx.putImageData(imageData, 0, 0);
+            }
+
+            function drawJulia(cx_arg, cy_arg) {
+                const cx = (cx_arg !== undefined) ? cx_arg : currentJuliaC.cx;
+                const cy = (cy_arg !== undefined) ? cy_arg : currentJuliaC.cy;
+
+                if (!isAnimating && cx_arg !== undefined && cy_arg !== undefined) {
+                    currentJuliaC.cx = cx;
+                    currentJuliaC.cy = cy;
+                }
+                if (!isAnimating && cValueSpan) {
+                     cValueSpan.textContent = `${cx.toFixed(4)} + ${cy.toFixed(4)}i`;
+                }
+
+                const imageData = juliaCtx.createImageData(J_WIDTH, J_HEIGHT);
+                const data = imageData.data;
+                const { xMin, xMax, yMin, yMax } = jCurrent;
+                for (let py = 0; py < J_HEIGHT; py++) {
+                    const zy = map(py, 0, J_HEIGHT, yMin, yMax);
+                    for (let px = 0; px < J_WIDTH; px++) {
+                        const zx = map(px, 0, J_WIDTH, xMin, xMax);
+                        const iter = calculateJulia(zx, zy, cx, cy, MAX_ITER);
+                        const color = getColor(iter, MAX_ITER);
+                        const index = (py * J_WIDTH + px) * 4;
+                        data[index] = color[0]; data[index + 1] = color[1]; data[index + 2] = color[2]; data[index + 3] = 255;
+                    }
+                }
+                juliaCtx.putImageData(imageData, 0, 0);
+            }
+
+            // --- Zoom Logic ---
+            function applyZoom(viewState, targetX, targetY, zoomFactor) { const currentWidth = viewState.width; const currentHeight = viewState.height; const newWidth = currentWidth / zoomFactor; const newHeight = currentHeight / zoomFactor; const ratioX = currentWidth === 0 ? 0.5 : (targetX - viewState.xMin) / currentWidth; const ratioY = currentHeight === 0 ? 0.5 : (targetY - viewState.yMin) / currentHeight; viewState.xMin = targetX - ratioX * newWidth; viewState.xMax = targetX + (1 - ratioX) * newWidth; viewState.yMin = targetY - ratioY * newHeight; viewState.yMax = targetY + (1 - ratioY) * newHeight; viewState.width = newWidth; viewState.height = newHeight; }
+
+            // --- Animation Control ---
+            function startAnimation(startX, startY) {
+                stopAnimation();
+                console.log("Starting Julia animation from:", startX, startY);
+                isAnimating = true;
+                if(animationStatusSpan) animationStatusSpan.textContent = "Running";
+                animation_c_start.cx = startX;
+                animation_c_start.cy = startY;
+                animationStartTime = Date.now();
+                lastFrameTime = Date.now();
+                animateJuliaStep();
+            }
+
+            function stopAnimation() {
+                if (isAnimating) {
+                    console.log("Stopping Julia animation");
+                    isAnimating = false;
+                    if (animationFrameID) cancelAnimationFrame(animationFrameID);
+                    animationFrameID = null;
+                    if(cValueSpan) cValueSpan.textContent = `${currentJuliaC.cx.toFixed(4)} + ${currentJuliaC.cy.toFixed(4)}i`;
+                    if(animationStatusSpan) animationStatusSpan.textContent = "Stopped";
+                } else if (animationStatusSpan && animationStatusSpan.textContent !== "Idle") {
+                    animationStatusSpan.textContent = "Idle";
+                }
+            }
+
+            function animateJuliaStep() {
+                if (!isAnimating) return;
+
+                const currentTime = Date.now();
+                if (currentTime - lastFrameTime >= animationDelay) {
+                    lastFrameTime = currentTime;
+
+                    const elapsed = currentTime - animationStartTime;
+                    const progress = (elapsed / ANIMATION_DURATION) * 2 % 2;
+                    const t = progress < 1 ? progress : 2 - progress;
+
+                    const current_c_anim = {
+                        cx: animation_c_start.cx * (1 - t),
+                        cy: animation_c_start.cy * (1 - t)
+                    };
+                    currentJuliaC.cx = current_c_anim.cx;
+                    currentJuliaC.cy = current_c_anim.cy;
+
+                    if(cValueSpan) cValueSpan.textContent = `${current_c_anim.cx.toFixed(4)} + ${current_c_anim.cy.toFixed(4)}i (Animating)`;
+                    drawJulia(current_c_anim.cx, current_c_anim.cy);
+                }
+                animationFrameID = requestAnimationFrame(animateJuliaStep);
+            }
+
+
+            // --- Event Listener Setup ---
+            function setupEventListeners() {
+                // Mouse Hover/Move Tracking
+                function handleMouseEnter(event, canvasId) { hoveredCanvas = canvasId; lastMousePos.x = event.offsetX; lastMousePos.y = event.offsetY;}
+                function handleMouseLeave() { hoveredCanvas = null; }
+                function handleMouseMove(event) { if ((hoveredCanvas === 'mandelbrot' && event.target === mandelbrotCanvas) || (hoveredCanvas === 'julia' && event.target === juliaCanvas)) { lastMousePos.x = event.offsetX; lastMousePos.y = event.offsetY; }}
+                mandelbrotCanvas.addEventListener('mouseenter', (e) => handleMouseEnter(e, 'mandelbrot'));
+                mandelbrotCanvas.addEventListener('mouseleave', handleMouseLeave);
+                mandelbrotCanvas.addEventListener('mousemove', handleMouseMove);
+                juliaCanvas.addEventListener('mouseenter', (e) => handleMouseEnter(e, 'julia'));
+                juliaCanvas.addEventListener('mouseleave', handleMouseLeave);
+                juliaCanvas.addEventListener('mousemove', handleMouseMove);
+
+                // Mandelbrot Right-Click -> Start Animation
+                mandelbrotCanvas.addEventListener('contextmenu', (event) => { event.preventDefault(); const clickX = event.offsetX; const clickY = event.offsetY; const startCx = map(clickX, 0, mandelbrotCanvas.clientWidth, mCurrent.xMin, mCurrent.xMax); const startCy = map(clickY, 0, mandelbrotCanvas.clientHeight, mCurrent.yMin, mCurrent.yMax); startAnimation(startCx, startCy); });
+
+                // Mandelbrot Left-Click -> Select Static Julia / Stop Animation
+                mandelbrotCanvas.addEventListener('click', (event) => { stopAnimation(); const clickX = event.offsetX; const clickY = event.offsetY; const cx = map(clickX, 0, mandelbrotCanvas.clientWidth, mCurrent.xMin, mCurrent.xMax); const cy = map(clickY, 0, mandelbrotCanvas.clientHeight, mCurrent.yMin, mCurrent.yMax); jCurrent = { ...INITIAL_J_VIEW }; drawJulia(cx, cy); });
+
+                // Document Left-Click -> Stop Animation
+                document.addEventListener('click', (event) => { if (event.target !== mandelbrotCanvas && isAnimating) { stopAnimation(); } });
+
+                // Interactions that stop animation (Wheel, Keydown, Dblclick)
+                mandelbrotCanvas.addEventListener('wheel', (event) => { stopAnimation(); event.preventDefault(); event.stopPropagation(); const mouseX = event.offsetX; const mouseY = event.offsetY; const targetCx = map(mouseX, 0, mandelbrotCanvas.clientWidth, mCurrent.xMin, mCurrent.xMax); const targetCy = map(mouseY, 0, mandelbrotCanvas.clientHeight, mCurrent.yMin, mCurrent.yMax); const zoom = event.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR; applyZoom(mCurrent, targetCx, targetCy, zoom); drawMandelbrot(); });
+                juliaCanvas.addEventListener('wheel', (event) => { stopAnimation(); event.preventDefault(); event.stopPropagation(); const mouseX = event.offsetX; const mouseY = event.offsetY; const targetZx = map(mouseX, 0, juliaCanvas.clientWidth, jCurrent.xMin, jCurrent.xMax); const targetZy = map(mouseY, 0, juliaCanvas.clientHeight, jCurrent.yMin, jCurrent.yMax); const zoom = event.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR; applyZoom(jCurrent, targetZx, targetZy, zoom); drawJulia(); });
+                document.addEventListener('keydown', (event) => { let zoomFactorKey = 1; if (event.key === '+' || event.key === '=') zoomFactorKey = ZOOM_FACTOR; else if (event.key === '-') zoomFactorKey = 1 / ZOOM_FACTOR; else return; event.preventDefault(); stopAnimation(); if (hoveredCanvas === 'mandelbrot') { const targetCx = map(lastMousePos.x, 0, mandelbrotCanvas.clientWidth, mCurrent.xMin, mCurrent.xMax); const targetCy = map(lastMousePos.y, 0, mandelbrotCanvas.clientHeight, mCurrent.yMin, mCurrent.yMax); applyZoom(mCurrent, targetCx, targetCy, zoomFactorKey); drawMandelbrot(); } else if (hoveredCanvas === 'julia') { const targetZx = map(lastMousePos.x, 0, juliaCanvas.clientWidth, jCurrent.xMin, jCurrent.xMax); const targetZy = map(lastMousePos.y, 0, juliaCanvas.clientHeight, jCurrent.yMin, jCurrent.yMax); applyZoom(jCurrent, targetZx, targetZy, zoomFactorKey); drawJulia(); } });
+                mandelbrotCanvas.addEventListener('dblclick', () => { stopAnimation(); console.log("Resetting Mandelbrot view"); mCurrent = { ...INITIAL_M_VIEW }; drawMandelbrot(); });
+                juliaCanvas.addEventListener('dblclick', () => { stopAnimation(); console.log("Resetting Julia view"); jCurrent = { ...INITIAL_J_VIEW }; drawJulia(); });
+
+                // Slider Event Listener
+                if (delaySlider && delayValueSpan) {
+                     delaySlider.addEventListener('input', () => {
+                         animationDelay = parseInt(delaySlider.value, 10);
+                         delayValueSpan.textContent = animationDelay;
+                     });
+                }
+            } // End setupEventListeners
+
+            // --- Initial Setup ---
+            if (delaySlider && delayValueSpan) {
+                animationDelay = parseInt(delaySlider.value, 10);
+                delayValueSpan.textContent = animationDelay;
+            } else {
+                animationDelay = 0;
+            }
+
+            setupEventListeners();
+
+            console.log("Performing initial draw...");
+            try {
+                drawMandelbrot();
+                drawJulia();
+                console.log("Initial draw complete.");
+                if(animationStatusSpan) animationStatusSpan.textContent = "Idle";
+            } catch (e) {
+                console.error("Error during initial draw:", e);
+                alert("An error occurred during the initial drawing of the fractals. Check the console.");
+            }
+        }; // End window.onload
+    </script>
+</body>
+</html>
